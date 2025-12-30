@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.sql
+!test_data/*.sql
+test_*.sql
+custom_output.sql
+
+# .NET artifacts (legacy code reference)
+dotnet_code/bin/
+dotnet_code/obj/
+dotnet_code/.vs/
