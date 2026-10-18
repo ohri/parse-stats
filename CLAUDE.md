@@ -13,6 +13,9 @@ Python tool for parsing NFL play-by-play CSV data and generating Oracle PL/SQL s
 # Basic usage - automatically creates w17mnf.sql
 python parse_stats.py -f w17mnf.csv -s 2025 -w 17
 
+# Parse multiple matching files into one output
+python parse_stats.py -f 'test_data/w17*.csv' -s 2025 -w 17 -o week17.sql
+
 # Custom output path
 python parse_stats.py -f test_data/w17sat.csv -s 2025 -w 17 -o custom.sql
 

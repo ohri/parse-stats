@@ -7,10 +7,31 @@ Parses NFL play-by-play CSV data and generates SQL statements for database inser
 import csv
 import sys
 import argparse
+import glob
+import os
 from enum import IntEnum
 from dataclasses import dataclass
 from typing import Dict, List, DefaultDict
 from collections import defaultdict
+
+
+def expand_input_files(file_patterns: List[str]) -> List[str]:
+    """Expand input paths and wildcard patterns into unique regular files."""
+    input_files = []
+
+    for pattern in file_patterns:
+        matches = sorted(glob.glob(pattern))
+        if not matches:
+            raise FileNotFoundError(pattern)
+
+        for match in matches:
+            if os.path.isfile(match) and match not in input_files:
+                input_files.append(match)
+
+    if not input_files:
+        raise FileNotFoundError(", ".join(file_patterns))
+
+    return input_files
 
 
 class PlayerStatTypes(IntEnum):
@@ -577,7 +598,10 @@ def main():
         description='Parse NFL play-by-play data and generate SQL for fantasy stats',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument('-f', '--file', required=True, help='Input CSV file path')
+    parser.add_argument(
+        '-f', '--file', required=True, nargs='+', dest='files',
+        help='Input CSV file path(s) or wildcard pattern(s)'
+    )
     parser.add_argument('-s', '--season', type=int, required=True, help='Season year')
     parser.add_argument('-w', '--week', type=int, required=True, help='Week number')
     parser.add_argument('-o', '--output', help='Output SQL file path (default: same as input with .sql extension)')
@@ -585,45 +609,58 @@ def main():
 
     args = parser.parse_args()
 
+    try:
+        input_files = expand_input_files(args.files)
+    except FileNotFoundError as e:
+        print(f"Error: No input files matched '{e.args[0]}'", file=sys.stderr)
+        return 1
+
     # Determine output file path
     if args.output:
         output_file = args.output
+    elif len(input_files) > 1:
+        print("Error: --output is required when multiple input files are provided",
+              file=sys.stderr)
+        return 1
     else:
         # Replace .csv extension with .sql
-        import os
-        base_name = os.path.splitext(args.file)[0]
+        base_name = os.path.splitext(input_files[0])[0]
         output_file = f"{base_name}.sql"
 
-    # Read CSV file
+    # Read CSV files
+    csv_contents = []
     try:
-        with open(args.file, 'r', encoding='utf-8') as f:
-            csv_content = f.read()
+        for input_file in input_files:
+            with open(input_file, 'r', encoding='utf-8') as f:
+                csv_contents.append((input_file, f.read()))
     except FileNotFoundError:
-        print(f"Error: File '{args.file}' not found", file=sys.stderr)
+        print(f"Error: File '{input_file}' not found", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"Error reading file: {e}", file=sys.stderr)
         return 1
 
     # Pre-scan for data integrity
-    csv_lines = csv_content.splitlines()
-    reader = csv.DictReader(csv_lines)
-    if PreScan.scan_file(reader):
-        print("Problems in data - terminating", file=sys.stderr)
-        return 1
+    for _, csv_content in csv_contents:
+        csv_lines = csv_content.splitlines()
+        reader = csv.DictReader(csv_lines)
+        if PreScan.scan_file(reader):
+            print("Problems in data - terminating", file=sys.stderr)
+            return 1
 
     # Parse the data
     data_parser = DataParser()
-    csv_lines = csv_content.splitlines()
-    reader = csv.DictReader(csv_lines)
+    for _, csv_content in csv_contents:
+        csv_lines = csv_content.splitlines()
+        reader = csv.DictReader(csv_lines)
 
-    for play in reader:
-        if int(play.get("week", "0")) == args.week:
-            try:
-                data_parser.route_parsing(play)
-            except Exception as e:
-                print(f"Exception occurred at play_id:{play.get('play_id', 'unknown')} -- {e}",
-                      file=sys.stderr)
+        for play in reader:
+            if int(play.get("week", "0")) == args.week:
+                try:
+                    data_parser.route_parsing(play)
+                except Exception as e:
+                    print(f"Exception occurred at play_id:{play.get('play_id', 'unknown')} -- {e}",
+                          file=sys.stderr)
 
     # Reduce punt data
     data_parser.reduce_punts()
@@ -632,7 +669,6 @@ def main():
     try:
         with open(output_file, 'w', encoding='utf-8') as f:
             # Redirect stdout to file
-            import sys
             old_stdout = sys.stdout
             sys.stdout = f
 
