@@ -615,42 +615,34 @@ def main():
         print(f"Error: No input files matched '{e.args[0]}'", file=sys.stderr)
         return 1
 
-    # Determine output file path
-    if args.output:
-        output_file = args.output
-    elif len(input_files) > 1:
-        print("Error: --output is required when multiple input files are provided",
+    if args.output and len(input_files) > 1:
+        print("Error: --output can only be used with a single input file",
               file=sys.stderr)
         return 1
-    else:
-        # Replace .csv extension with .sql
-        base_name = os.path.splitext(input_files[0])[0]
-        output_file = f"{base_name}.sql"
 
-    # Read CSV files
-    csv_contents = []
-    try:
-        for input_file in input_files:
+    for input_file in input_files:
+        # Replace .csv extension with .sql unless a custom output was supplied.
+        output_file = args.output or f"{os.path.splitext(input_file)[0]}.sql"
+
+        try:
             with open(input_file, 'r', encoding='utf-8') as f:
-                csv_contents.append((input_file, f.read()))
-    except FileNotFoundError:
-        print(f"Error: File '{input_file}' not found", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"Error reading file: {e}", file=sys.stderr)
-        return 1
+                csv_content = f.read()
+        except FileNotFoundError:
+            print(f"Error: File '{input_file}' not found", file=sys.stderr)
+            return 1
+        except Exception as e:
+            print(f"Error reading file '{input_file}': {e}", file=sys.stderr)
+            return 1
 
-    # Pre-scan for data integrity
-    for _, csv_content in csv_contents:
+        # Pre-scan for data integrity.
         csv_lines = csv_content.splitlines()
         reader = csv.DictReader(csv_lines)
         if PreScan.scan_file(reader):
             print("Problems in data - terminating", file=sys.stderr)
             return 1
 
-    # Parse the data
-    data_parser = DataParser()
-    for _, csv_content in csv_contents:
+        # Parse the data independently for each input file.
+        data_parser = DataParser()
         csv_lines = csv_content.splitlines()
         reader = csv.DictReader(csv_lines)
 
@@ -662,43 +654,43 @@ def main():
                     print(f"Exception occurred at play_id:{play.get('play_id', 'unknown')} -- {e}",
                           file=sys.stderr)
 
-    # Reduce punt data
-    data_parser.reduce_punts()
+        # Reduce punt data.
+        data_parser.reduce_punts()
 
-    # Generate SQL output
-    try:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            # Redirect stdout to file
-            old_stdout = sys.stdout
-            sys.stdout = f
+        # Generate SQL output.
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                old_stdout = sys.stdout
+                try:
+                    sys.stdout = f
 
-            SQLGenerator.write_stats(data_parser.stats, args.week, args.season)
-            SQLGenerator.write_kicks(data_parser.kicks, args.week, args.season)
+                    SQLGenerator.write_stats(data_parser.stats, args.week, args.season)
+                    SQLGenerator.write_kicks(data_parser.kicks, args.week, args.season)
+                finally:
+                    sys.stdout = old_stdout
 
-            sys.stdout = old_stdout
+            print(f"Successfully generated: {output_file}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error writing output file: {e}", file=sys.stderr)
+            return 1
 
-        print(f"Successfully generated: {output_file}", file=sys.stderr)
-    except Exception as e:
-        print(f"Error writing output file: {e}", file=sys.stderr)
-        return 1
+        # Debug output.
+        if args.debug:
+            print(f"\n\n--- DEBUG OUTPUT ({input_file}) ---", file=sys.stderr)
+            for player_id, stats in data_parser.stats.items():
+                print(f"\n{player_id}:", file=sys.stderr)
+                for stat_id, value in stats.items():
+                    print(f"\t{stat_id}\t{value}", file=sys.stderr)
 
-    # Debug output
-    if args.debug:
-        print("\n\n--- DEBUG OUTPUT ---", file=sys.stderr)
-        for player_id, stats in data_parser.stats.items():
-            print(f"\n{player_id}:", file=sys.stderr)
-            for stat_id, value in stats.items():
-                print(f"\t{stat_id}\t{value}", file=sys.stderr)
+            for player_id, fg_list in data_parser.kicks.items():
+                print(f"\n{player_id} (FGs):", file=sys.stderr)
+                for fg in fg_list:
+                    print(f"\t{fg.distance} yards\tmade:{fg.made}", file=sys.stderr)
 
-        for player_id, fg_list in data_parser.kicks.items():
-            print(f"\n{player_id} (FGs):", file=sys.stderr)
-            for fg in fg_list:
-                print(f"\t{fg.distance} yards\tmade:{fg.made}", file=sys.stderr)
-
-        for player_id, punt_list in data_parser.punts.items():
-            print(f"\n{player_id} (Punts):", file=sys.stderr)
-            for punt in punt_list:
-                print(f"\t{punt.distance}\tEZ?:{punt.in_ez}\t20?:{punt.inside20}", file=sys.stderr)
+            for player_id, punt_list in data_parser.punts.items():
+                print(f"\n{player_id} (Punts):", file=sys.stderr)
+                for punt in punt_list:
+                    print(f"\t{punt.distance}\tEZ?:{punt.in_ez}\t20?:{punt.inside20}", file=sys.stderr)
 
     return 0
 

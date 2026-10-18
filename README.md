@@ -21,8 +21,9 @@ python parse_stats.py -f INPUT_FILE [INPUT_FILE ...] -s SEASON -w WEEK [-o OUTPU
 - `-o, --output`: Output SQL file path (optional, default: replaces .csv with .sql)
 - `-d, --debug`: Enable debug output to stderr (optional)
 
-When multiple files match `-f`, they are combined into one parse. Use `-o` to
-specify the output path when processing multiple files.
+When multiple files match `-f`, each file is parsed independently and produces
+an `.sql` file with the same base name. The `-o` option is only for a single
+input file.
 
 ### Examples
 
@@ -36,8 +37,8 @@ python parse_stats.py -f test_data/w17sat.csv -s 2025 -w 17 -o week17_saturday.s
 # With debug output
 python parse_stats.py -f w17mnf.csv -s 2025 -w 17 -d
 
-# Parse all matching files into one SQL file (quote the wildcard if desired)
-python parse_stats.py -f 'test_data/w17*.csv' -s 2025 -w 17 -o week17.sql
+# Parse all matching files; each gets its own .sql file
+python parse_stats.py -f 'test_data/w17*.csv' -s 2025 -w 17
 ```
 
 ## Output
